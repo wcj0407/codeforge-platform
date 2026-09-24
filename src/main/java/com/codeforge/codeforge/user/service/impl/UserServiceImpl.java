@@ -33,6 +33,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         user.setUsername(registerRequest.getUsername());
         user.setPassword(passwordEncoder.encode(registerRequest.getPassword()));
         user.setRole("USER");
+        user.setStatus(1);
         save(user);
 
         UserVO userVO = new UserVO();
@@ -48,6 +49,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
          //判断是否在数据库中存在用户
         if (user==null) {
             throw  new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        //查看是否被禁用了
+        if (user.getStatus() != null && user.getStatus() == 0 ) {
+            throw new BusinessException (ErrorCode.ACCOUNT_DISABLED);
         }
         //通过比对来判断密码正不正确
         if (!passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {

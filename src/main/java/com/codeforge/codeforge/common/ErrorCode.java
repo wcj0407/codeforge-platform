@@ -10,6 +10,7 @@ public enum ErrorCode {
     USERNAME_EXISTS(40001,"用户名已经存在"),
     USER_NOT_FOUND(40002,"用户没有找到"),
     PASSWORD_ERROR(40003,"密码错误"),
+    ACCOUNT_DISABLED( 40004 , "账号已被禁用" ),
     UNAUTHORIZED(40100,"未登录"),
     FORBIDDEN(40300,"无权限"),
     SYSTEM_ERROR(50000,"系统错误");
