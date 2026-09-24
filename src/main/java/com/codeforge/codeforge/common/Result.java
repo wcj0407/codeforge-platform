@@ -1,9 +1,7 @@
 package com.codeforge.codeforge.common;
 
 import lombok.Getter;
-
-import java.util.UUID;
-
+import org.slf4j.MDC;
 @Getter
 //统一返回
 public class Result <T>{
@@ -51,7 +49,7 @@ public class Result <T>{
 
 
     private static String currentTraceId() {
-        return UUID.randomUUID().toString().replace("-", "");
+        return MDC.get("traceId");
     }
 
 }
