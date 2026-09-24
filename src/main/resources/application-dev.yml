@@ -9,3 +9,9 @@ mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
     map-underscore-to-camel-case: true
+#写到配置文件中可以不明文表示出去
+jwt:
+#  密钥
+  secret: codeforge-jwt-secret-key-2026-please-change-me-32+
+#  过期时间
+  expiration: 604800000

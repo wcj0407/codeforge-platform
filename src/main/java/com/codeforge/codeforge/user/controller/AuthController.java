@@ -1,6 +1,8 @@
 package com.codeforge.codeforge.user.controller;
 
 import com.codeforge.codeforge.common.Result;
+import com.codeforge.codeforge.user.dto.LoginRequest;
+import com.codeforge.codeforge.user.dto.LoginResponse;
 import com.codeforge.codeforge.user.dto.RegisterRequest;
 import com.codeforge.codeforge.user.dto.UserVO;
 import com.codeforge.codeforge.user.service.UserService;
@@ -19,5 +21,9 @@ public class AuthController {
     @PostMapping("/register")
     public Result<UserVO> register(@Valid @RequestBody RegisterRequest registerRequest) {
         return Result.success(userService.register(registerRequest));
+    }
+    @PostMapping("/login")
+    public Result<LoginResponse> login(@Valid @RequestBody LoginRequest loginRequest) {
+        return Result.success(userService.login(loginRequest));
     }
 }
