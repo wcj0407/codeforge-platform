@@ -60,6 +60,12 @@
 			<artifactId>mybatis-plus-spring-boot4-starter</artifactId>
 			<version>3.5.15</version> <!-- 或者最新版本 -->
 		</dependency>
+
+		<dependency>
+			<groupId>com.baomidou</groupId>
+			<artifactId>mybatis-plus-jsqlparser</artifactId>
+			<version>3.5.15</version>
+		</dependency>
 <!--		用来判断密码长度-->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

@@ -13,6 +13,7 @@ public enum ErrorCode {
     ACCOUNT_DISABLED( 40004 , "账号已被禁用" ),
     UNAUTHORIZED(40100,"未登录"),
     FORBIDDEN(40300,"无权限"),
+    PROBLEM_NOT_FOUND( 40401 , "题目不存在" ),
     SYSTEM_ERROR(50000,"系统错误");
 
     private final int code;
