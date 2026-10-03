@@ -19,3 +19,7 @@ Thumbs.db
 # 环境变量（重要！避免泄露密码）
 .env
 application-local.yml
+
+# Token/凭据文件（避免泄露身份）
+*.token
+*_token.txt
