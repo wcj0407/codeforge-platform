@@ -51,8 +51,8 @@ public class JudgeServiceImpl implements JudgeService {
             Files.writeString(javaFile, submission.getCode());
 
             // 5. javac 编译
-            ProcessBuilder compileBuilder = new ProcessBuilder("javac", "Solution.java");
-            compileBuilder.directory(tempDirectory.toFile());
+            ProcessBuilder compileBuilder = new ProcessBuilder("docker","run","--rm"
+                    ,"--network","none","-v",tempDirectory+":/sandbox","codeforge-judge:1.0","javac","Solution.java");
             compileBuilder.redirectErrorStream(true);
             Process compileProcess = compileBuilder.start();
 
@@ -71,8 +71,9 @@ public class JudgeServiceImpl implements JudgeService {
 
             // 6. 遍历测试用例：执行 + 喂输入 + 比对
             for (ProblemVersion.TestCase testCase : version.getTestCases()) {
-                ProcessBuilder runBuilder = new ProcessBuilder("java", "Solution");
-                runBuilder.directory(tempDirectory.toFile());
+                ProcessBuilder runBuilder = new ProcessBuilder("docker","run","--rm"
+                        ,"-i","--network","none","--memory","256m","-v",tempDirectory+":/sandbox"
+                        ,"codeforge-judge:1.0","timeout",String.valueOf((version.getTimeLimit()+999)/1000),"java","Solution");
                 runBuilder.redirectErrorStream(true);
                 Process runProcess = runBuilder.start();
 
@@ -80,17 +81,23 @@ public class JudgeServiceImpl implements JudgeService {
                 runProcess.getOutputStream().flush();
                 runProcess.getOutputStream().close();
 
-                boolean finished = runProcess.waitFor(version.getTimeLimit(), TimeUnit.MILLISECONDS);
+                boolean finished = runProcess.waitFor(version.getTimeLimit()+5000, TimeUnit.MILLISECONDS);
                 if (!finished) {
                     runProcess.destroyForcibly();
                     result.setStatus("TIME_LIMIT_EXCEEDED");
                     return result;
                 }
-
+                int exited = runProcess.exitValue();
                 // 检查运行时错误
-                if (runProcess.exitValue() != 0) {
-                    result.setStatus("RUNTIME_ERROR");
-                    result.setErrorMessage("Process exited with code " + runProcess.exitValue());
+                if ( exited== 124) {
+                    result.setStatus("TIME_LIMIT_EXCEEDED");
+                    result.setErrorMessage("Process exited with code " + exited);
+                    return result;
+                }
+
+                if (exited != 0 ) {
+                    result.setStatus( "RUNTIME_ERROR" );
+                    result.setErrorMessage( "Process exited with code " + exited);
                     return result;
                 }
 

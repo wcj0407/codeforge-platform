@@ -23,3 +23,7 @@ application-local.yml
 # Token/凭据文件（避免泄露身份）
 *.token
 *_token.txt
+
+# Docker 沙箱调试产物
+judge-sandbox/demo/
+*.class

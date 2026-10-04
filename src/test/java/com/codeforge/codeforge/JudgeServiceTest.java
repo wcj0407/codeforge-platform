@@ -25,4 +25,19 @@ public class JudgeServiceTest {
         Submission submission = submissionMapper.selectById(1L);
         System.out.println("数据库状态: " + submission.getStatus());
     }
+
+    @Test public void testJudgeTimeout () {
+        JudgeResult result = judgeService.judge( 2L );
+        System.out.println( "判题结果: " + result.getStatus());
+        Submission submission = submissionMapper.selectById( 2L );
+        System.out.println( "数据库状态: " + submission.getStatus());
+    }
+
+    @Test public void testJudgeMemoryBomb () {
+        JudgeResult result = judgeService.judge( 3L );
+        System.out.println( "判题结果: " + result.getStatus());
+        Submission submission = submissionMapper.selectById( 3L );
+        System.out.println( "数据库状态: " + submission.getStatus());
+        System.out.println( "错误信息: " + submission.getErrorMessage());
+    }
 }
