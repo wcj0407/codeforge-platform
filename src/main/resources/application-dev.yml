@@ -4,7 +4,12 @@ spring:
     url: jdbc:mysql://localhost:3306/codeforge?useSSL=false&serverTimezone=Asia/Shanghai
     username: root
     password: 1234
-
+  rabbitmq:
+    host: 127.0.0.1
+    port: 5672
+    stream:
+      username: guest
+      password: guest
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl

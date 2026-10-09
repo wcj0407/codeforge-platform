@@ -2,27 +2,27 @@ package com.codeforge.codeforge.submission.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.codeforge.codeforge.common.Result;
-import com.codeforge.codeforge.judge.service.JudgeService;
 import com.codeforge.codeforge.submission.dto.SubmissionCreateRequest;
 import com.codeforge.codeforge.submission.dto.SubmissionDetailVO;
 import com.codeforge.codeforge.submission.dto.SubmissionVO;
 import com.codeforge.codeforge.submission.service.SubmissionService;
 import jakarta.validation.Valid;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/submission")
 @RequiredArgsConstructor
 public class SubmissionController {
+
     private final SubmissionService submissionService;
-    private final JudgeService judgeService;
+    private final RabbitTemplate rabbitTemplate;
 
     @PostMapping
     public Result<SubmissionVO> createSubmission(@Valid @RequestBody SubmissionCreateRequest request) {
         SubmissionVO vo = submissionService.createSubmission(request);
-        judgeService.judge(vo.getId());
+        rabbitTemplate.convertAndSend("judge.queue",vo.getId());
         return Result.success(vo);
     }
 
