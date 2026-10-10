@@ -7,9 +7,13 @@ spring:
   rabbitmq:
     host: 127.0.0.1
     port: 5672
-    stream:
-      username: guest
-      password: guest
+    username: guest
+    password: guest
+
+    listener:
+      simple:
+        acknowledge-mode: manual
+
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
@@ -23,3 +27,6 @@ jwt:
 logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{traceId}] %logger{36} - %msg%n"
+
+
+

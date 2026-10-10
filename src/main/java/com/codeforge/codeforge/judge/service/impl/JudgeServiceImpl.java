@@ -119,9 +119,9 @@ public class JudgeServiceImpl implements JudgeService {
             result.setScore(score);
             return result;
         } catch (IOException | InterruptedException e) {
-            result.setStatus("RUNTIME_ERROR");
+            result.setStatus("SYSTEM_ERROR");
             result.setErrorMessage(e.getMessage());
-            return result;
+            throw new RuntimeException("判题系统故障：" + e.getMessage(), e);
         } finally {
             // 7. 更新 submission
             submission.setStatus(result.getStatus());
