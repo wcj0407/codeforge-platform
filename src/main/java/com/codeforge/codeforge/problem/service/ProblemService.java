@@ -17,5 +17,7 @@ public interface ProblemService extends IService<Problem> {
 
     ProblemVO updateProblem (Long id, ProblemUpdateRequest request) ;
 
+    ProblemVO updateStatus(Long id, String status);
+
     void deleteProblem(Long id);
 }

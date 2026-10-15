@@ -3,7 +3,9 @@ package com.codeforge.codeforge.judge.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.codeforge.codeforge.judge.dto.JudgeResult;
 import com.codeforge.codeforge.judge.service.JudgeService;
+import com.codeforge.codeforge.problem.entity.ProblemTestCase;
 import com.codeforge.codeforge.problem.entity.ProblemVersion;
+import com.codeforge.codeforge.problem.mapper.ProblemTestCaseMapper;
 import com.codeforge.codeforge.problem.mapper.ProblemVersionMapper;
 import com.codeforge.codeforge.submission.entity.Submission;
 import com.codeforge.codeforge.submission.mapper.SubmissionMapper;
@@ -17,13 +19,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
 public class JudgeServiceImpl implements JudgeService {
+    /** 沙箱输出中，用来回传容器峰值内存的标记前缀（随程序输出一起返回，读取时会被剔除） */
+    private static final String MEMORY_MARKER = "__MEM_PEAK__=";
+
     private final SubmissionMapper submissionMapper;
     private final ProblemVersionMapper problemVersionMapper;
+    private final ProblemTestCaseMapper problemTestCaseMapper;
 
     @Override
     public JudgeResult judge(Long submissionId) {
@@ -42,9 +49,30 @@ public class JudgeServiceImpl implements JudgeService {
         Path tempDirectory = null;
         JudgeResult result = new JudgeResult();
         int passedCases = 0;
-        int totalCases = version.getTestCases().size();
+        int totalCases = 0;
+        long maxTimeMs = 0;
+        long maxMemoryBytes = 0;
+        boolean hasRun = false;
 
         try {
+            // 版本缺失时无法判题，直接给出系统错误
+            if (version == null) {
+                result.setStatus("SYSTEM_ERROR");
+                result.setErrorMessage("题目版本不存在，无法判题");
+                return result;
+            }
+            // 从独立表读该版本的全部用例（公开 + 隐藏都参与判题）
+            List<ProblemTestCase> testCases = problemTestCaseMapper.selectList(
+                    new LambdaQueryWrapper<ProblemTestCase>()
+                            .eq(ProblemTestCase::getProblemVersionId, version.getId())
+                            .orderByAsc(ProblemTestCase::getSortNo));
+            if (testCases.isEmpty()) {
+                result.setStatus("SYSTEM_ERROR");
+                result.setErrorMessage("该题目没有测试用例");
+                return result;
+            }
+            totalCases = testCases.size();
+
             tempDirectory = Files.createTempDirectory("judge-");
             // 4. 写 Solution.java
             Path javaFile = tempDirectory.resolve("Solution.java");
@@ -70,18 +98,31 @@ public class JudgeServiceImpl implements JudgeService {
             }
 
             // 6. 遍历测试用例：执行 + 喂输入 + 比对
-            for (ProblemVersion.TestCase testCase : version.getTestCases()) {
+            String timeLimitSeconds = String.valueOf((version.getTimeLimit()+999)/1000);
+            // 运行程序后，顺带回传容器 cgroup 的峰值内存（cgroup v2 与 v1 路径都尝试）
+            String runScript = "timeout " + timeLimitSeconds + " java Solution; ec=$?; "
+                    + "p=$(cat /sys/fs/cgroup/memory.peak 2>/dev/null"
+                    + " || cat /sys/fs/cgroup/memory/memory.max_usage_in_bytes 2>/dev/null"
+                    + " || echo 0); echo \"" + MEMORY_MARKER + "$p\"; exit $ec";
+            for (ProblemTestCase testCase : testCases) {
                 ProcessBuilder runBuilder = new ProcessBuilder("docker","run","--rm"
-                        ,"-i","--network","none","--memory","256m","-v",tempDirectory+":/sandbox"
-                        ,"codeforge-judge:1.0","timeout",String.valueOf((version.getTimeLimit()+999)/1000),"java","Solution");
+                        ,"-i","--network","none","--memory",version.getMemoryLimit()+"m","-v",tempDirectory+":/sandbox"
+                        ,"codeforge-judge:1.0","sh","-c",runScript);
                 runBuilder.redirectErrorStream(true);
                 Process runProcess = runBuilder.start();
+                hasRun = true;
 
                 runProcess.getOutputStream().write(testCase.getInput().getBytes());
                 runProcess.getOutputStream().flush();
                 runProcess.getOutputStream().close();
 
+                long startNano = System.nanoTime();
                 boolean finished = runProcess.waitFor(version.getTimeLimit()+5000, TimeUnit.MILLISECONDS);
+                long elapsedMs = (System.nanoTime() - startNano) / 1_000_000;
+                if (elapsedMs > maxTimeMs) {
+                    maxTimeMs = elapsedMs;
+                }
+
                 if (!finished) {
                     runProcess.destroyForcibly();
                     result.setStatus("TIME_LIMIT_EXCEEDED");
@@ -107,7 +148,24 @@ public class JudgeServiceImpl implements JudgeService {
                 while ((outputLine = runReader.readLine()) != null) {
                     output.append(outputLine).append("\n");
                 }
-                String actual = output.toString();
+                // 剔除内存标记行，其余才是程序真实输出
+                long memoryBytes = 0;
+                StringBuilder cleanedOutput = new StringBuilder();
+                for (String rawLine : output.toString().split("\n")) {
+                    if (rawLine.startsWith(MEMORY_MARKER)) {
+                        try {
+                            memoryBytes = Long.parseLong(rawLine.substring(MEMORY_MARKER.length()).trim());
+                        } catch (NumberFormatException ignored) {
+                            // cgroup 不可读时保持 0
+                        }
+                    } else {
+                        cleanedOutput.append(rawLine).append("\n");
+                    }
+                }
+                if (memoryBytes > maxMemoryBytes) {
+                    maxMemoryBytes = memoryBytes;
+                }
+                String actual = cleanedOutput.toString();
                 if (actual.trim().equals(testCase.getOutput().trim())) {
                     passedCases++;
                 }
@@ -123,10 +181,19 @@ public class JudgeServiceImpl implements JudgeService {
             result.setErrorMessage(e.getMessage());
             throw new RuntimeException("判题系统故障：" + e.getMessage(), e);
         } finally {
+            // 回填耗时/内存（只有真正跑过测试用例才有值）
+            if (hasRun) {
+                result.setTimeUsed((int) maxTimeMs);
+                if (maxMemoryBytes > 0) {
+                    result.setMemoryUsed((int) (maxMemoryBytes / 1024));
+                }
+            }
             // 7. 更新 submission
             submission.setStatus(result.getStatus());
             submission.setScore(result.getScore());
             submission.setErrorMessage(result.getErrorMessage());
+            submission.setTimeUsed(result.getTimeUsed());
+            submission.setMemoryUsed(result.getMemoryUsed());
             submission.setJudgeTime(LocalDateTime.now());
             submissionMapper.updateById(submission);
 

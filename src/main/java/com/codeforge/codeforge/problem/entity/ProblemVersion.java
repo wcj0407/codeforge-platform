@@ -42,5 +42,7 @@ public class ProblemVersion {
     public static class TestCase {
         private String input;
         private String output;
+        /** 是否公开样例：true-公开（仅存档用；判题/下发以 problem_test_case.is_public 为准） */
+        private Boolean isPublic;
     }
 }

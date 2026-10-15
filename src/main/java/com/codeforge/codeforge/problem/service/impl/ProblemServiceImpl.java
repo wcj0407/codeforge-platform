@@ -11,8 +11,10 @@ import com.codeforge.codeforge.problem.dto.ProblemDetailVO;
 import com.codeforge.codeforge.problem.dto.ProblemUpdateRequest;
 import com.codeforge.codeforge.problem.dto.ProblemVO;
 import com.codeforge.codeforge.problem.entity.Problem;
+import com.codeforge.codeforge.problem.entity.ProblemTestCase;
 import com.codeforge.codeforge.problem.entity.ProblemVersion;
 import com.codeforge.codeforge.problem.mapper.ProblemMapper;
+import com.codeforge.codeforge.problem.mapper.ProblemTestCaseMapper;
 import com.codeforge.codeforge.problem.mapper.ProblemVersionMapper;
 import com.codeforge.codeforge.problem.service.ProblemService;
 import com.codeforge.codeforge.user.dto.UserVO;
@@ -29,6 +31,7 @@ import java.util.List;
 public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> implements ProblemService {
     private final ProblemMapper problemMapper;
     private final ProblemVersionMapper problemVersionMapper;
+    private final ProblemTestCaseMapper problemTestCaseMapper;
     @Override
     @Transactional
     public ProblemVO createProblem(ProblemCreateRequest request) {
@@ -48,9 +51,11 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
         version.setOutputFormat(request.getOutputFormat());
         version.setTimeLimit(request.getTimeLimit());
         version.setMemoryLimit(request.getMemoryLimit());
-        version.setTestCases(request.getTestCases());
         version.setCreatedBy(UserContext.get().getId());
         problemVersionMapper.insert(version);
+
+        // 用例写入独立表（公开/隐藏标记以 problem_test_case.is_public 为准）
+        saveTestCases(version.getId(), request.getTestCases());
 
         ProblemVO vo = new ProblemVO ();
         vo.setId(problem.getId());
@@ -126,7 +131,8 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
         vo.setOutputFormat(version.getOutputFormat());
         vo.setTimeLimit(version.getTimeLimit());
         vo.setMemoryLimit(version.getMemoryLimit());
-        vo.setTestCases(version.getTestCases());
+        // 普通用户只下发公开样例，作者/管理员可见全量（含隐藏用例）
+        vo.setTestCases(loadTestCases(version.getId(), !(isCreator || isadmin)));
         vo.setCreatedAt(version.getCreatedAt());
         return vo;
     }
@@ -159,9 +165,11 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
         version.setOutputFormat(request.getOutputFormat());
         version.setTimeLimit(request.getTimeLimit());
         version.setMemoryLimit(request.getMemoryLimit());
-        version.setTestCases(request.getTestCases());
         version.setCreatedBy(current.getId());
         problemVersionMapper.insert(version);
+
+        // 用例写入独立表
+        saveTestCases(version.getId(), request.getTestCases());
 
         problem.setTitle(request.getTitle());
         problem.setDifficulty(request.getDifficulty());
@@ -169,6 +177,27 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
         problem.setUpdateTime(LocalDateTime.now());
         updateById(problem);
 
+
+        return toVO(problem);
+    }
+
+    @Override
+    public ProblemVO updateStatus(Long id, String status) {
+        Problem problem = getById(id);
+        if (problem == null) {
+            throw new BusinessException(ErrorCode.PROBLEM_NOT_FOUND);
+        }
+
+        UserVO current = UserContext.get();
+        boolean isowner = problem.getCreatorId().equals(current.getId());
+        boolean isadmin = "ADMIN".equals(current.getRole());
+        if (!isowner && !isadmin) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        problem.setStatus(status);
+        problem.setUpdateTime(LocalDateTime.now());
+        updateById(problem);
 
         return toVO(problem);
     }
@@ -189,6 +218,49 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
 
         removeById(id);
 
+    }
+
+    /**
+     * 把提交的用例列表写入 problem_test_case 表。
+     * isPublic 为 null 或 true 视为公开，仅显式 false 视为隐藏。
+     */
+    private void saveTestCases(Long versionId, List<ProblemVersion.TestCase> testCases) {
+        if (testCases == null) {
+            return;
+        }
+        int sortNo = 1;
+        for (ProblemVersion.TestCase tc : testCases) {
+            ProblemTestCase row = new ProblemTestCase();
+            row.setProblemVersionId(versionId);
+            row.setSortNo(sortNo++);
+            row.setInput(tc.getInput());
+            row.setOutput(tc.getOutput());
+            row.setIsPublic(tc.getIsPublic() == null || tc.getIsPublic() ? 1 : 0);
+            problemTestCaseMapper.insert(row);
+        }
+    }
+
+    /**
+     * 从 problem_test_case 表读取指定版本的用例。
+     * onlyPublic 为 true 时只返回公开样例（普通用户），否则返回全量（作者/管理员）。
+     */
+    private List<ProblemVersion.TestCase> loadTestCases(Long versionId, boolean onlyPublic) {
+        LambdaQueryWrapper<ProblemTestCase> wrapper = new LambdaQueryWrapper<ProblemTestCase>()
+                .eq(ProblemTestCase::getProblemVersionId, versionId);
+        if (onlyPublic) {
+            wrapper.eq(ProblemTestCase::getIsPublic, 1);
+        }
+        wrapper.orderByAsc(ProblemTestCase::getSortNo);
+        List<ProblemTestCase> rows = problemTestCaseMapper.selectList(wrapper);
+        List<ProblemVersion.TestCase> result = new ArrayList<>();
+        for (ProblemTestCase row : rows) {
+            ProblemVersion.TestCase tc = new ProblemVersion.TestCase();
+            tc.setInput(row.getInput());
+            tc.setOutput(row.getOutput());
+            tc.setIsPublic(row.getIsPublic() != null && row.getIsPublic() == 1);
+            result.add(tc);
+        }
+        return result;
     }
 
     private ProblemVO toVO(Problem problem) {
