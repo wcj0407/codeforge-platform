@@ -8,8 +8,12 @@ import java.time.LocalDateTime;
 public class SubmissionVO {
     private Long id;
     private Long problemId;
+    /** 题目名称（题目被删除时为 null，前端用「题目 #id」兜底） */
+    private String problemTitle;
     private Integer problemVersion;
     private Long userId;
+    /** 提交人用户名（管理员查看全量提交时展示） */
+    private String username;
     private String language;
     private String status;
     private Integer score;

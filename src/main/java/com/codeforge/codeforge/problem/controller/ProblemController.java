@@ -5,9 +5,9 @@ import com.codeforge.codeforge.common.Result;
 import com.codeforge.codeforge.common.annotation.RequireRole;
 import com.codeforge.codeforge.problem.dto.ProblemCreateRequest;
 import com.codeforge.codeforge.problem.dto.ProblemDetailVO;
-import com.codeforge.codeforge.problem.dto.ProblemStatusRequest;
 import com.codeforge.codeforge.problem.dto.ProblemUpdateRequest;
 import com.codeforge.codeforge.problem.dto.ProblemVO;
+import com.codeforge.codeforge.problem.dto.ReviewRequest;
 import com.codeforge.codeforge.problem.service.ProblemService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,10 +29,20 @@ public class ProblemController {
             @RequestParam (defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer size,
             @RequestParam(required = false) String difficulty,
-            @RequestParam(required = false) String status
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword
     ) {
-        return Result.success(problemService.listProblems(page,size,difficulty,status));
+        return Result.success(problemService.listProblems(page,size,difficulty,status,keyword));
 
+    }
+
+    @RequireRole({"AUTHOR","ADMIN"})
+    @GetMapping("/my")
+    public Result<Page<ProblemVO>> myProblems(
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "10") Integer size
+    ) {
+        return Result.success(problemService.listMyProblems(page, size));
     }
 
     @GetMapping("/{id}")
@@ -47,9 +57,22 @@ public class ProblemController {
     }
 
     @RequireRole({"AUTHOR","ADMIN"})
-    @PutMapping("/{id}/status")
-    public Result<ProblemVO> updateStatus(@PathVariable Long id, @Valid @RequestBody ProblemStatusRequest request) {
-        return Result.success(problemService.updateStatus(id, request.getStatus()));
+    @PostMapping("/{id}/submit-review")
+    public Result<ProblemVO> submitReview(@PathVariable Long id) {
+        return Result.success(problemService.submitForReview(id));
+    }
+
+    @RequireRole({"ADMIN"})
+    @PostMapping("/{id}/review")
+    public Result<ProblemVO> reviewProblem(@PathVariable Long id, @Valid @RequestBody ReviewRequest request) {
+        return Result.success(problemService.reviewProblem(id, request));
+    }
+
+    @RequireRole({"AUTHOR","ADMIN"})
+    @PostMapping("/{id}/offline")
+    public Result<ProblemVO> offline(@PathVariable Long id) {
+
+        return Result.success(problemService.offline(id));
     }
 
     @RequireRole({"AUTHOR","ADMIN"})

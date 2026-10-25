@@ -17,6 +17,8 @@ public class Problem {
     @TableField(typeHandler= JacksonTypeHandler.class)
     private List<String> tags;
     private String status;
+    /** 审核驳回原因（仅 REJECTED 状态时有值） */
+    private String reviewComment;
     private Long creatorId;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

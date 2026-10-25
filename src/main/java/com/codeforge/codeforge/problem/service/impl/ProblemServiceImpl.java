@@ -6,10 +6,12 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.codeforge.codeforge.common.ErrorCode;
 import com.codeforge.codeforge.common.context.UserContext;
 import com.codeforge.codeforge.common.exception.BusinessException;
+import com.codeforge.codeforge.problem.constant.ProblemStatus;
 import com.codeforge.codeforge.problem.dto.ProblemCreateRequest;
 import com.codeforge.codeforge.problem.dto.ProblemDetailVO;
 import com.codeforge.codeforge.problem.dto.ProblemUpdateRequest;
 import com.codeforge.codeforge.problem.dto.ProblemVO;
+import com.codeforge.codeforge.problem.dto.ReviewRequest;
 import com.codeforge.codeforge.problem.entity.Problem;
 import com.codeforge.codeforge.problem.entity.ProblemTestCase;
 import com.codeforge.codeforge.problem.entity.ProblemVersion;
@@ -39,7 +41,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
         problem.setTitle(request.getTitle());
         problem.setDifficulty(request.getDifficulty());
         problem.setTags(request.getTags());
-        problem.setStatus( "DRAFT" );
+        problem.setStatus(ProblemStatus.DRAFT);
         problem.setCreatorId(UserContext.get().getId());
         save(problem);
 
@@ -68,33 +70,47 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
     }
 
     @Override
-    public Page<ProblemVO> listProblems(Integer page, Integer size, String difficulty, String status) {
-        //创建一个分页的容器
-        Page<Problem> pageParm = new Page<>(page, size);
-        //创建一个查询条件容器
-        LambdaQueryWrapper<Problem> queryWrapper = new LambdaQueryWrapper<> ();
-        //如果从线程中获取的role不是管理员，就加状态查询为published或者是传照的人是本人
-        if (!"ADMIN".equals(UserContext.get().getRole())) {
-            queryWrapper.and(w->w.eq(Problem::getStatus,"PUBLISHED")
-                    .or()
-                    .eq(Problem::getCreatorId,UserContext.get().getId()));
+    public Page<ProblemVO> listProblems(Integer page, Integer size, String difficulty, String status, String keyword) {
+        UserVO current = UserContext.get();
+        LambdaQueryWrapper<Problem> queryWrapper = new LambdaQueryWrapper<>();
+
+        // 公开题目列表：所有角色默认只看「已发布」的题
+        if (status != null && "ADMIN".equals(current.getRole())) {
+            // 仅管理员能按状态筛选（审核页查 PENDING_REVIEW 用）
+            queryWrapper.eq(Problem::getStatus, status);
+        } else {
+            queryWrapper.eq(Problem::getStatus, ProblemStatus.PUBLISHED);
         }
-        //添加查询条件（三参数）
-        queryWrapper.eq(difficulty!=null,Problem::getDifficulty,difficulty);
-        queryWrapper.eq(status!=null,Problem::getStatus,status);
+
+        queryWrapper.eq(difficulty != null, Problem::getDifficulty, difficulty);
+        // 按标题模糊搜索（大小写不敏感，取决于库的 utf8mb4_unicode_ci 排序规则）
+        if (keyword != null && !keyword.isBlank()) {
+            queryWrapper.like(Problem::getTitle, keyword.trim());
+        }
         queryWrapper.orderByDesc(Problem::getId);
-        //进行分页查询
-        Page<Problem> result=page(pageParm, queryWrapper);
-        //创建一个problemvo的类型的分页容器
-        Page<ProblemVO> vopage=new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
-        //创建一个list数组
-        List<ProblemVO> voList=new ArrayList<>();
-        //通过加强for来把里面的数据拿出来，放进数组中
+        Page<Problem> result = page(new Page<>(page, size), queryWrapper);
+        return toVOPage(result);
+    }
+
+    @Override
+    public Page<ProblemVO> listMyProblems(Integer page, Integer size) {
+        Long myId = UserContext.get().getId();
+        LambdaQueryWrapper<Problem> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Problem::getCreatorId, myId);
+        wrapper.orderByDesc(Problem::getId);
+        Page<Problem> result = page(new Page<>(page, size), wrapper);
+        return toVOPage(result);
+    }
+
+    // 把题目分页转成 VO 分页（公开列表、我的题目共用）
+    private Page<ProblemVO> toVOPage(Page<Problem> result) {
+        Page<ProblemVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
+        List<ProblemVO> voList = new ArrayList<>();
         for (Problem problem : result.getRecords()) {
             voList.add(toVO(problem));
         }
-        vopage.setRecords(voList);
-        return vopage;
+        voPage.setRecords(voList);
+        return voPage;
     }
 
     @Override
@@ -105,7 +121,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
         }
         UserVO current = UserContext.get();
 
-        boolean isPUBLISHED = "PUBLISHED".equals(problem.getStatus());
+        boolean isPUBLISHED = ProblemStatus.PUBLISHED.equals(problem.getStatus());
         boolean isCreator = problem.getCreatorId().equals(current.getId());
         boolean isadmin = "ADMIN".equals(current.getRole());
 
@@ -122,6 +138,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
         vo.setDifficulty(problem.getDifficulty());
         vo.setTags(problem.getTags());
         vo.setStatus(problem.getStatus());
+        vo.setReviewComment(problem.getReviewComment());
         vo.setCreatorId(problem.getCreatorId());
         vo.setCreateTime(problem.getCreateTime());
         vo.setUpdateTime(problem.getUpdateTime());
@@ -131,10 +148,28 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
         vo.setOutputFormat(version.getOutputFormat());
         vo.setTimeLimit(version.getTimeLimit());
         vo.setMemoryLimit(version.getMemoryLimit());
-        // 普通用户只下发公开样例，作者/管理员可见全量（含隐藏用例）
-        vo.setTestCases(loadTestCases(version.getId(), !(isCreator || isadmin)));
+        // 读取全量用例，下发时再按角色过滤
+        vo.setTestCases(loadTestCases(version.getId(), false));
         vo.setCreatedAt(version.getCreatedAt());
-        return vo;
+
+        return applyVisibility(vo);
+    }
+
+    /**
+     * 普通用户只保留公开样例；作者/管理员返回全量用例。
+     * 题目本身的可见性（未发布题）已在查询前校验。
+     */
+    private ProblemDetailVO applyVisibility(ProblemDetailVO detail) {
+        UserVO current = UserContext.get();
+        boolean isCreator = detail.getCreatorId() != null && detail.getCreatorId().equals(current.getId());
+        boolean isAdmin = "ADMIN".equals(current.getRole());
+
+        if (!isCreator && !isAdmin && detail.getTestCases() != null) {
+            detail.setTestCases(detail.getTestCases().stream()
+                    .filter(tc -> Boolean.TRUE.equals(tc.getIsPublic()))
+                    .toList());
+        }
+        return detail;
     }
 
     @Override
@@ -150,6 +185,12 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
 
         if (!isowner && !isadmin) {
             throw new BusinessException(ErrorCode.PROBLEM_NOT_FOUND);
+        }
+
+        // 编辑被驳回的题：状态回草稿，重新走提交审核
+        if (ProblemStatus.REJECTED.equals(problem.getStatus())) {
+            problem.setStatus(ProblemStatus.DRAFT);
+            problem.setReviewComment(null);
         }
 
         LambdaQueryWrapper<ProblemVersion> wrapper = new LambdaQueryWrapper<>();
@@ -177,28 +218,88 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
         problem.setUpdateTime(LocalDateTime.now());
         updateById(problem);
 
-
         return toVO(problem);
     }
 
     @Override
-    public ProblemVO updateStatus(Long id, String status) {
+    @Transactional
+    public ProblemVO submitForReview(Long id) {
         Problem problem = getById(id);
         if (problem == null) {
             throw new BusinessException(ErrorCode.PROBLEM_NOT_FOUND);
         }
 
         UserVO current = UserContext.get();
-        boolean isowner = problem.getCreatorId().equals(current.getId());
-        boolean isadmin = "ADMIN".equals(current.getRole());
-        if (!isowner && !isadmin) {
+        // 只有作者本人能提交自己的题目进入审核
+        if (!problem.getCreatorId().equals(current.getId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        // 只有草稿状态才允许提交审核
+        if (!ProblemStatus.DRAFT.equals(problem.getStatus())) {
+            throw new BusinessException(ErrorCode.PROBLEM_STATUS_ERROR);
+        }
+
+        problem.setStatus(ProblemStatus.PENDING_REVIEW);
+        problem.setUpdateTime(LocalDateTime.now());
+        updateById(problem);
+        return toVO(problem);
+    }
+
+    @Override
+    @Transactional
+    public ProblemVO reviewProblem(Long id, ReviewRequest request) {
+        Problem problem = getById(id);
+        if (problem == null) {
+            throw new BusinessException(ErrorCode.PROBLEM_NOT_FOUND);
+        }
+
+        // 只有待审核状态才能被审核
+        if (!ProblemStatus.PENDING_REVIEW.equals(problem.getStatus())) {
+            throw new BusinessException(ErrorCode.PROBLEM_STATUS_ERROR);
+        }
+
+
+        boolean approved = Boolean.TRUE.equals(request.getApproved());
+        if (approved) {
+            problem.setStatus(ProblemStatus.PUBLISHED);
+            problem.setReviewComment(null); // 通过时清空历史驳回原因
+        } else {
+            // 驳回必须填写原因
+            if (request.getComment() == null || request.getComment().isBlank()) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR);
+            }
+            problem.setStatus(ProblemStatus.REJECTED);
+            problem.setReviewComment(request.getComment());
+        }
+
+        problem.setUpdateTime(LocalDateTime.now());
+        updateById(problem);
+        return toVO(problem);
+    }
+
+    @Override
+    @Transactional
+    public ProblemVO offline(Long id) {
+        Problem problem = getById(id);
+        if (problem == null) {
+            throw new BusinessException(ErrorCode.PROBLEM_NOT_FOUND);
+        }
+
+        UserVO current = UserContext.get();
+        boolean isOwner = problem.getCreatorId().equals(current.getId());
+        boolean isAdmin = "ADMIN".equals(current.getRole());
+        if (!isOwner && !isAdmin) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
 
-        problem.setStatus(status);
+        // 只有已发布状态才能下架
+        if (!ProblemStatus.PUBLISHED.equals(problem.getStatus())) {
+            throw new BusinessException(ErrorCode.PROBLEM_STATUS_ERROR);
+        }
+
+        problem.setStatus(ProblemStatus.OFFLINE);
         problem.setUpdateTime(LocalDateTime.now());
         updateById(problem);
-
         return toVO(problem);
     }
 
@@ -270,6 +371,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, Problem> impl
         vo.setDifficulty(problem.getDifficulty());
         vo.setTags(problem.getTags());
         vo.setStatus(problem.getStatus());
+        vo.setReviewComment(problem.getReviewComment());
         vo.setCreatorId(problem.getCreatorId());
         vo.setCreateTime(problem.getCreateTime());
         vo.setUpdateTime(problem.getUpdateTime());

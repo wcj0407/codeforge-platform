@@ -1,3 +1,6 @@
 spring:
   profiles:
     active: dev
+  # 本地私有配置（邮箱授权码等），文件不存在时也不影响启动
+  config:
+    import: optional:classpath:application-local.yml

@@ -11,7 +11,7 @@ import jakarta.validation.Valid;
 public interface SubmissionService extends IService<Submission> {
     SubmissionVO createSubmission( SubmissionCreateRequest request);
 
-    Page<SubmissionVO> listSubmission(Integer page, Integer size, String status);
+    Page<SubmissionVO> listSubmission(Integer page, Integer size, String status, Long userId);
 
     SubmissionDetailVO getSubmission(Long id);
 }

@@ -105,7 +105,20 @@
 			<artifactId>spring-boot-starter-aspectj</artifactId>
 		</dependency>
 
-<!--AMQP-->
+<!-- MinIO 对象存储（头像上传） -->
+	<dependency>
+		<groupId>io.minio</groupId>
+		<artifactId>minio</artifactId>
+		<version>8.5.12</version>
+	</dependency>
+
+	<!-- 邮件发送（找回密码验证码） -->
+	<dependency>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-mail</artifactId>
+	</dependency>
+
+	<!--AMQP-->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-amqp</artifactId>

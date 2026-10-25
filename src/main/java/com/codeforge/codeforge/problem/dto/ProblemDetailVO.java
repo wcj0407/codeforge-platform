@@ -13,6 +13,8 @@ public class ProblemDetailVO {
     private String difficulty;
     private List<String> tags;
     private String status;
+    /** 审核驳回原因（仅 REJECTED 状态时返回） */
+    private String reviewComment;
     private Long creatorId;
     private Integer version;
     private String description;

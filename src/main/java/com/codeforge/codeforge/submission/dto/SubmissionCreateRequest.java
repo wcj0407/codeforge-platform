@@ -14,6 +14,6 @@ public class SubmissionCreateRequest {
     private String code;
 
     @NotBlank(message = "代码语言不能为空")
-    @Pattern(regexp="JAVA|PYTHON|CPP", message = "语言必须是 JAVA/PYTHON/CPP")
+    @Pattern(regexp="JAVA", message = "目前仅支持 JAVA")
     private String language;
 }

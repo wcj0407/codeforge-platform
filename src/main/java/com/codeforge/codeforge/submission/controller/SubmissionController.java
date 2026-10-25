@@ -8,7 +8,6 @@ import com.codeforge.codeforge.submission.dto.SubmissionVO;
 import com.codeforge.codeforge.submission.service.SubmissionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -17,12 +16,10 @@ import org.springframework.web.bind.annotation.*;
 public class SubmissionController {
 
     private final SubmissionService submissionService;
-    private final RabbitTemplate rabbitTemplate;
 
     @PostMapping
     public Result<SubmissionVO> createSubmission(@Valid @RequestBody SubmissionCreateRequest request) {
         SubmissionVO vo = submissionService.createSubmission(request);
-        rabbitTemplate.convertAndSend("judge.queue",vo.getId());
         return Result.success(vo);
     }
 
@@ -30,9 +27,10 @@ public class SubmissionController {
     public Result<Page<SubmissionVO>> listSubmission(
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer size,
-            @RequestParam(required = false) String status
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long userId
     ) {
-        return Result.success(submissionService.listSubmission(page,size,status));
+        return Result.success(submissionService.listSubmission(page,size,status,userId));
     }
 
     @GetMapping("/{id}")
