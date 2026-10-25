@@ -1,5 +1,7 @@
 # CodeForge 在线代码评测平台
 
+> 仓库地址：https://github.com/wcj0407/codeforge-platform
+
 一个基于 **Spring Boot 4 + Vue 3** 的在线判题系统：用户浏览题目、提交 Java 代码，后端通过 RabbitMQ 异步分发判题任务，在 Docker 沙箱中编译运行，并把结果回写数据库。
 
 适合作为后端 / 全栈方向的个人项目，重点在**判题链路可靠性**和**多角色权限**，而不是堆页面。
