@@ -1,0 +1,41 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/codeforge?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: 1234
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
+  rabbitmq:
+    host: 127.0.0.1
+    port: 15673
+    username: guest
+    password: guest
+
+    listener:
+      simple:
+        acknowledge-mode: manual
+
+minio:
+  endpoint: http://115.29.184.197:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  bucket: codeforge
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+#写到配置文件中可以不明文表示出去
+jwt:
+#  密钥
+  secret: codeforge-jwt-secret-key-2026-please-change-me-32+
+#  过期时间
+  expiration: 604800000
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{traceId}] %logger{36} - %msg%n"
+
+
+

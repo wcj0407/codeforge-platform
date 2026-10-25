@@ -1,0 +1,29 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 环境变量（重要！避免泄露密码）
+.env
+application-local.yml
+
+# Token/凭据文件（避免泄露身份）
+*.token
+*_token.txt
+
+# Docker 沙箱调试产物
+judge-sandbox/demo/
+*.class
