@@ -1,16 +1,16 @@
 package com.codeforge.codeforge.outbox;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.codeforge.codeforge.outbox.entity.OutboxEvent;
 import com.codeforge.codeforge.outbox.mapper.OutboxEventMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -44,8 +44,9 @@ public class OutboxRelayJob {
                 event.setSentTime(LocalDateTime.now());
 
                 outboxEventMapper.updateById(event);
-            } catch (AmqpException e) {
-                log.error("outbox 消息发送失败 id={}", event.getId(), e);
+            } catch (Exception e) {
+                // 单条消息解析/发送失败不能拖垮整批事件
+                log.error("outbox 消息处理失败 id={}", event.getId(), e);
                 event.setRetryCount(event.getRetryCount() == null ? 1 : event.getRetryCount() + 1);
                 event.setErrorMessage(truncate(e.getMessage(), 500));
                 outboxEventMapper.updateById(event);
@@ -57,9 +58,10 @@ public class OutboxRelayJob {
 
     }
 
-    private Long parseSubmissionId(String payload) {
+    private Long parseSubmissionId(String payload) throws JsonProcessingException {
         JsonNode node = objectMapper.readTree(payload);
-       return node.get("submissionId").asLong();
+        JsonNode idNode = node.get("submissionId");
+        return idNode == null ? null : idNode.asLong();
     }
 
     private String resolveQueue(String eventType) {
